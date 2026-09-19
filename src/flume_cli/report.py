@@ -21,6 +21,34 @@ def daily_windows(days, end=None):
         windows.append((since.strftime(DATETIME_FORMAT), until.strftime(DATETIME_FORMAT)))
     return windows
 
+def month_windows(reference=None):
+    """Daily windows covering the last full calendar month, oldest first.
+
+    e.g. run in September, this covers Aug 1 00:00:00 -> Sep 1 00:00:00,
+    chunked into one request per day (see daily_windows for why: no
+    documented per-request row/range limit on the query endpoint).
+    """
+    reference = reference or datetime.now()
+    start_of_this_month = reference.replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    )
+    if start_of_this_month.month == 1:
+        start_of_last_month = start_of_this_month.replace(
+            year=start_of_this_month.year - 1, month=12
+        )
+    else:
+        start_of_last_month = start_of_this_month.replace(
+            month=start_of_this_month.month - 1
+        )
+
+    windows = []
+    day_start = start_of_last_month
+    while day_start < start_of_this_month:
+        day_end = min(day_start + timedelta(days=1), start_of_this_month)
+        windows.append((day_start.strftime(DATETIME_FORMAT), day_end.strftime(DATETIME_FORMAT)))
+        day_start = day_end
+    return windows
+
 
 def select_device_ids(devices, requested_ids):
     if not requested_ids:
@@ -35,11 +63,12 @@ def select_device_ids(devices, requested_ids):
     return list(requested_ids)
 
 
-def build_report_rows(client, user_id, device_ids, *, days, units):
+def build_report_rows(client, user_id, device_ids, *, days=None, bucket, units):
+    windows = daily_windows(days) if days is not None else month_windows()
     for device_id in device_ids:
-        for since, until in daily_windows(days):
+        for since, until in windows:
             readings = client.query_device(
-                user_id, device_id, since=since, until=until, units=units
+                user_id, device_id, since=since, until=until, bucket=bucket, units=units
             )
             for reading in readings:
                 yield {

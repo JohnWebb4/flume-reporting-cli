@@ -11,6 +11,7 @@ TOKEN_CACHE_PATH = Path.home() / ".flume" / "token.json"
 
 DEFAULT_UNITS = "GALLONS"
 DEFAULT_DAYS = 7
+DEFAULT_BUCKET = "MIN"
 DEFAULT_DEVICE_TYPE = 2  # water sensor (1 = bridge)
 DEFAULT_OUTPUT = "flume_report.csv"
 
