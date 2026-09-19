@@ -4,7 +4,7 @@ import sys
 from flume_cli import auth, report
 from flume_cli.client import FlumeClient
 from flume_cli.config import (
-    DEFAULT_DAYS,
+    DEFAULT_BUCKET,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_OUTPUT,
     DEFAULT_UNITS,
@@ -17,15 +17,23 @@ from flume_cli.errors import ConfigError, FlumeCliError
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="flume-report",
-        description="Fetch hourly Flume water usage and write it to a CSV file.",
+        description="Fetch Flume water usage and write it to a CSV file.",
     )
     parser.add_argument(
         "--output", default=DEFAULT_OUTPUT,
         help=f"CSV output path (default: {DEFAULT_OUTPUT})",
     )
     parser.add_argument(
-        "--days", type=int, default=DEFAULT_DAYS,
-        help=f"Number of trailing days of hourly usage to fetch (default: {DEFAULT_DAYS})",
+        "--days", type=int, default=None,
+        help=(
+            "Number of trailing days of usage to fetch. Defaults to the last full "
+            "calendar month when omitted."
+        ),
+    )
+    parser.add_argument(
+        "--bucket", default=DEFAULT_BUCKET,
+        choices=["MIN", "HR", "DAY", "MON", "YR"],
+        help=f"Bucket interval for usage values (default: {DEFAULT_BUCKET})",
     )
     parser.add_argument(
         "--device-id", action="append", default=None, dest="device_ids",
@@ -58,7 +66,8 @@ def main(argv=None):
         device_ids = report.select_device_ids(devices, args.device_ids)
 
         rows = report.build_report_rows(
-            client, token.user_id, device_ids, days=args.days, units=args.units
+            client, token.user_id, device_ids,
+            days=args.days, bucket=args.bucket, units=args.units,
         )
         count = report.write_csv(rows, args.output)
     except FlumeCliError as exc:

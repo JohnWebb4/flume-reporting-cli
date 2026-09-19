@@ -53,27 +53,30 @@ FLUME_PASSWORD=...
 flume-report
 ```
 
-By default this fetches the last 7 days of hourly usage (in gallons) for every water sensor
-on the account and writes it to `flume_report.csv` in the current directory.
+By default this fetches the last full calendar month of usage at 1-minute granularity (in
+gallons) for every water sensor on the account and writes it to `flume_report.csv` in the
+current directory.
 
 | Flag | Default | Description |
 |---|---|---|
 | `--output PATH` | `flume_report.csv` | Where to write the CSV |
-| `--days N` | `7` | Number of trailing days of hourly usage to fetch |
+| `--days N` | last full calendar month | Number of trailing days of usage to fetch. Overrides the calendar-month default. |
+| `--bucket BUCKET` | `MIN` | `MIN`, `HR`, `DAY`, `MON`, or `YR` |
 | `--device-id ID` | all sensors | Limit the report to one device (repeatable) |
 | `--units UNIT` | `GALLONS` | `GALLONS`, `LITERS`, `CUBIC_FEET`, or `CUBIC_METERS` |
 
-Example: last 3 days for a specific device, in liters:
+Example: last 3 days of hourly usage for a specific device, in liters:
 
 ```bash
-flume-report --days 3 --device-id 6721255604737738501 --units LITERS --output usage.csv
+flume-report --days 3 --bucket HR --device-id 6721255604737738501 --units LITERS --output usage.csv
 ```
 
-The output CSV has one row per hourly reading:
+The output CSV has one row per reading at the requested bucket interval (1-minute rows by
+default):
 
 ```
 device_id,datetime,value,units
-6721255604737738501,2026-09-11 12:00:00,1.5,GALLONS
+6721255604737738501,2026-09-11 12:01:00,0.1,GALLONS
 ...
 ```
 
@@ -89,13 +92,17 @@ then refreshes it automatically. Delete this file to force a fresh login.
   with respect to timezone. This CLI sends naive local timestamps (your machine's local time),
   matching Flume's account/location-based dashboard. If your reports look off by a fixed number
   of hours, this is the first thing to check.
-- **Hourly bucket**: hourly queries use `bucket="HR"`, based on Flume's documented bucket
-  vocabulary (`MIN`/`HR`/`DAY`/`MON`/`YR`). This isn't shown explicitly in the reference docs in
-  `docs/`, so verify against a live response if usage looks wrong.
+- **Bucket interval**: `--bucket` selects one of Flume's documented bucket values
+  (`MIN`/`HR`/`DAY`/`MON`/`YR`), defaulting to `MIN`. This isn't shown explicitly in the
+  reference docs in `docs/`, so verify against a live response if usage looks wrong.
 - **Paging strategy**: the usage query endpoint doesn't document a `limit`/`offset` style of
-  pagination, so this CLI pages by issuing one hourly-bucket query per calendar day instead
-  (`--days 7` → 7 requests per device) to stay well under any undocumented per-request range
-  limits.
+  pagination, so this CLI pages by issuing one query per calendar day instead (last full
+  calendar month → ~28-31 requests per device by default; `--days N` → N requests per device)
+  to stay well under any undocumented per-request range limits. At the default `MIN` bucket
+  this means up to 1440 rows per request (vs. 24/day previously at `HR`) — day-sized chunking
+  was chosen defensively for `HR` and hasn't been independently verified as safe at `MIN`
+  against an undocumented row/range limit, so watch for errors or truncated results on large
+  accounts.
 
 ## Troubleshooting
 
