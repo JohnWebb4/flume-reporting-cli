@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "flume-reporting-cli"
+version = "0.1.0"
+description = "CLI wrapper for the Flume Water API to generate a CSV report of hourly water usage"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+flume-report = "flume_cli.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flume_cli"]
