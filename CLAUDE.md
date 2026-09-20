@@ -11,8 +11,8 @@ to a CSV file. Single-purpose tool, no server component, no database.
 
 ```bash
 pip install -e .          # editable install; registers the `flume-report` console script
-flume-report               # run it (also: python -m flume_cli)
-flume-report --days 3 --bucket HR --device-id <id> --units LITERS --output usage.csv
+flume-report day --days 3 --bucket HR --device-id <id> --units LITERS --output usage.csv
+flume-report month         # last full calendar month (also: python -m flume_cli month)
 ```
 
 There is no test suite, linter, or CI config in this repo currently — don't assume `pytest`/`ruff`/etc.
@@ -36,13 +36,17 @@ Request flow through the modules in `src/flume_cli/`:
    429s, non-`success` JSON envelopes) to the exception hierarchy in `errors.py`. All API calls funnel
    through `_request()`, which raises `RateLimitError` on 429 and the given `error_cls` (default
    `FlumeApiError`) otherwise.
-4. **`report.py`** — turns a device list + date range into CSV rows. Usage queries are chunked into
-   one HTTP request **per calendar day** (`daily_windows`/`month_windows`), not one request for the
-   whole range — the Flume query endpoint has no documented row/range limit, so day-sized chunks are
-   a defensive choice. Default range with no `--days` flag is the last full calendar month.
-5. **`cli.py`** — argparse wiring; orchestrates config → auth → device list → report rows → CSV, and
-   is the only place that catches `FlumeCliError` and turns it into an `error: ...` message + exit code
-   (2 for config errors, 1 for everything else).
+4. **`report.py`** — turns a device list + a pre-computed list of `(since, until)` windows into CSV
+   rows via `build_report_rows(..., windows=...)`. Usage queries are chunked into one HTTP request
+   **per calendar day** (`daily_windows`/`month_windows`), not one request for the whole range — the
+   Flume query endpoint has no documented row/range limit, so day-sized chunks are a defensive choice.
+   `report.py` itself has no notion of "day mode" vs. "month mode" — that decision lives in `cli.py`.
+5. **`cli.py`** — argparse wiring with `day` and `month` subcommands (sharing `--output`, `--bucket`,
+   `--device-id`, `--units` via a `parents=` parser; `--days` is `day`-only). `main()` picks
+   `report.daily_windows`/`report.month_windows` based on `args.command`, then orchestrates
+   config → auth → device list → report rows → CSV, and is the only place that catches
+   `FlumeCliError` and turns it into an `error: ...` message + exit code (2 for config errors, 1 for
+   everything else).
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.
