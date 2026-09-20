@@ -63,8 +63,7 @@ def select_device_ids(devices, requested_ids):
     return list(requested_ids)
 
 
-def build_report_rows(client, user_id, device_ids, *, days=None, bucket, units):
-    windows = daily_windows(days) if days is not None else month_windows()
+def build_report_rows(client, user_id, device_ids, *, windows, bucket, units):
     for device_id in device_ids:
         for since, until in windows:
             readings = client.query_device(
