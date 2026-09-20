@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a change or new capability for flume-report.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that flume-report doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work (new flag, output format, behavior change, etc.)?
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else relevant, e.g. links to Flume API docs.
+    validations:
+      required: false
