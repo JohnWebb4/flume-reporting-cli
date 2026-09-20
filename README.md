@@ -103,6 +103,14 @@ then refreshes it automatically. Delete this file to force a fresh login.
   was chosen defensively for `HR` and hasn't been independently verified as safe at `MIN`
   against an undocumented row/range limit, so watch for errors or truncated results on large
   accounts.
+- **Rate limiting**: Flume enforces a 120 requests/hour limit per account. With the default
+  calendar-month/`MIN`-bucket paging above, an account with several devices can hit this in a
+  single run. Hitting it produces a clear `error: Flume API rate limit reached (429): ...`
+  message and the CLI exits (code 1) without retrying — wait for the limit to reset (up to an
+  hour) and re-run, or narrow the request with `--days`/`--device-id` to use fewer requests.
+- **Network errors**: requests time out after 30s, and connection failures (DNS, refused
+  connections, timeouts) are caught and reported as a clean `error: ...` message rather than a
+  raw Python traceback.
 
 ## Troubleshooting
 
