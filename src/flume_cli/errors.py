@@ -34,3 +34,22 @@ class FlumeApiError(FlumeCliError):
 
 class AuthError(FlumeApiError):
     """Raised specifically for login/token-refresh failures."""
+
+
+class RateLimitError(FlumeApiError):
+    """Raised when the Flume API returns 429 (rate limit exceeded)."""
+
+    @classmethod
+    def from_response(cls, response):
+        text = (
+            "Flume API rate limit reached (429): you've hit Flume's ~120 requests/hour "
+            "limit. Wait for it to reset (up to an hour) before retrying."
+        )
+        retry_after = response.headers.get("Retry-After")
+        if retry_after:
+            text += f" Retry-After: {retry_after}."
+        return cls(text, status_code=response.status_code)
+
+
+class NetworkError(FlumeCliError):
+    """Raised when a request fails before an HTTP response was received (timeout, DNS, etc)."""

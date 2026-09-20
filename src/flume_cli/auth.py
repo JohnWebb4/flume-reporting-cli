@@ -4,7 +4,7 @@ import time
 from dataclasses import asdict, dataclass
 
 from flume_cli.config import TOKEN_CACHE_PATH
-from flume_cli.errors import AuthError
+from flume_cli.errors import AuthError, RateLimitError
 
 # Flume's docs only say "the JWT token needs to be decoded" to get the user_id,
 # without naming the claim. Try these in order and use whichever is present.
@@ -93,6 +93,8 @@ def get_valid_token(client, creds):
             token = _token_set_from_api_data(data)
             save_token(token)
             return token
+        except RateLimitError:
+            raise  # don't burn another request on a fresh login during a rate-limit window
         except AuthError:
             pass  # fall through to a fresh login
 

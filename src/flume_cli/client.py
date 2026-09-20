@@ -1,7 +1,9 @@
 import requests
 
 from flume_cli.config import BASE_URL
-from flume_cli.errors import AuthError, FlumeApiError
+from flume_cli.errors import AuthError, FlumeApiError, NetworkError, RateLimitError
+
+REQUEST_TIMEOUT = 30
 
 
 class FlumeClient:
@@ -14,13 +16,25 @@ class FlumeClient:
         self.session.headers["Authorization"] = f"Bearer {access_token}"
 
     def _request(self, method, path, *, error_cls=FlumeApiError, **kwargs):
-        response = self.session.request(method, f"{self.base_url}{path}", **kwargs)
+        try:
+            response = self.session.request(
+                method, f"{self.base_url}{path}", timeout=REQUEST_TIMEOUT, **kwargs
+            )
+        except requests.exceptions.Timeout:
+            raise NetworkError(
+                f"Flume API request timed out after {REQUEST_TIMEOUT}s: {method} {path}"
+            )
+        except requests.exceptions.RequestException as exc:
+            raise NetworkError(f"Network error while contacting Flume API: {exc}")
+
         try:
             body = response.json()
         except ValueError:
             body = None
 
         if not response.ok or body is None or not body.get("success", False):
+            if response.status_code == 429:
+                raise RateLimitError.from_response(response)
             raise error_cls.from_response(response)
 
         return body
