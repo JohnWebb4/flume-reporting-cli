@@ -87,7 +87,9 @@ def select_device_ids(devices, requested_ids):
     unknown = [device_id for device_id in requested_ids if device_id not in available]
     if unknown:
         raise FlumeCliError(
-            f"Requested device id(s) not found for this account: {', '.join(unknown)}"
+            f"Requested device id(s) not found for this account: {', '.join(unknown)}. "
+            "Run a report with no --device-id to see valid ids in the output CSV's "
+            "device_id column."
         )
     return list(requested_ids)
 

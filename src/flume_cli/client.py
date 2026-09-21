@@ -22,10 +22,14 @@ class FlumeClient:
             )
         except requests.exceptions.Timeout:
             raise NetworkError(
-                f"Flume API request timed out after {REQUEST_TIMEOUT}s: {method} {path}"
+                f"Timed out waiting for the Flume API after {REQUEST_TIMEOUT}s. "
+                "Check your internet connection and try again."
             )
         except requests.exceptions.RequestException as exc:
-            raise NetworkError(f"Network error while contacting Flume API: {exc}")
+            raise NetworkError(
+                f"Could not reach the Flume API — check your internet connection. "
+                f"(Details: {exc})"
+            )
 
         try:
             body = response.json()

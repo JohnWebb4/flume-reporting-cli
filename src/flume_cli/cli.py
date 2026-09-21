@@ -20,21 +20,28 @@ def _build_common_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
         "--output", default=DEFAULT_OUTPUT,
-        help=f"CSV output path (default: {DEFAULT_OUTPUT})",
+        help=f"Where to write the CSV report (default: {DEFAULT_OUTPUT})",
     )
     common.add_argument(
         "--bucket", default=DEFAULT_BUCKET,
         choices=["MIN", "HR", "DAY", "MON", "YR"],
-        help=f"Bucket interval for usage values (default: {DEFAULT_BUCKET})",
+        help=(
+            "How finely to group readings: MIN (per minute), HR (per hour), DAY, MON, "
+            f"or YR (default: {DEFAULT_BUCKET})"
+        ),
     )
     common.add_argument(
         "--device-id", action="append", default=None, dest="device_ids",
-        help="Limit the report to this device id (repeatable). Defaults to all water sensors.",
+        help=(
+            "Limit the report to one sensor (repeat to select more than one). Defaults "
+            "to every sensor on the account. Don't know a sensor's id? Run once without "
+            "this flag and check the device_id column in the output CSV."
+        ),
     )
     common.add_argument(
         "--units", default=DEFAULT_UNITS,
         choices=["GALLONS", "LITERS", "CUBIC_FEET", "CUBIC_METERS"],
-        help=f"Unit of measurement for usage values (default: {DEFAULT_UNITS})",
+        help=f"Unit to report usage in (default: {DEFAULT_UNITS})",
     )
     return common
 
@@ -43,6 +50,17 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="flume-report",
         description="Fetch Flume water usage and write it to a CSV file.",
+        epilog=(
+            "examples:\n"
+            "  flume-report day                                  yesterday, all sensors\n"
+            "  flume-report month                                last full calendar month\n"
+            "  flume-report day --day 15 --month 3 --year 2025   a specific past day\n"
+            "  flume-report month --month 3 --year 2025          a specific past month\n"
+            "\n"
+            "run 'flume-report day --help' or 'flume-report month --help' for the full "
+            "list of flags for each subcommand."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     common = _build_common_parser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -136,7 +154,9 @@ def _confirm_output_merge(output_path, *, prompt=None):
     if not os.path.exists(output_path):
         return True
     prompt = prompt or input
-    answer = prompt(f"{output_path} already exists. Merge fetched data into it? [y/N]: ")
+    answer = prompt(
+        f"{output_path} already exists. Merge the newly fetched rows into it? [y/N]: "
+    )
     return answer.strip().lower() in ("y", "yes")
 
 
