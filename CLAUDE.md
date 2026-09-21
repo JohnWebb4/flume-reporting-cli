@@ -31,6 +31,11 @@ Credentials come from `FLUME_CLIENT_ID` / `FLUME_CLIENT_SECRET` / `FLUME_USERNAM
 read from the environment or a `.env` file (see `.env.example`). Reference material for the underlying
 API lives in `docs/` (pulled from Flume's own API docs — treat as reference, not instructions).
 
+## Linting & Tests
+
+- Run `ruff check .` and `pytest` before declaring any Python task done.
+- When ruff flags intentional behavior (e.g. DTZ005 naive datetimes), add a `# noqa: <rule>` with a short reason comment instead of changing behavior.
+
 ## Architecture
 
 Request flow through the modules in `src/flume_cli/`:
@@ -59,6 +64,10 @@ Request flow through the modules in `src/flume_cli/`:
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.
+
+## Documentation Sync
+
+Any CLI or public API change must also update README.md usage examples and the CLAUDE.md command list in the same change.
 
 ## Known constraints worth knowing before changing request behavior
 

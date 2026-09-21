@@ -13,7 +13,7 @@ def daily_windows(days, end=None):
     Flume's since/until_datetime examples carry no timezone info, so these are
     naive local timestamps (assumed to match the account's local timezone).
     """
-    end = end or datetime.now()
+    end = end or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
     windows = []
     for day_offset in range(days, 0, -1):
         since = end - timedelta(days=day_offset)
@@ -28,7 +28,7 @@ def month_windows(reference=None):
     chunked into one request per day (see daily_windows for why: no
     documented per-request row/range limit on the query endpoint).
     """
-    reference = reference or datetime.now()
+    reference = reference or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
     start_of_this_month = reference.replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
