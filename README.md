@@ -61,9 +61,11 @@ The CLI requires one of two subcommands:
 Both write usage at 1-minute granularity (in gallons) for every water sensor on the account to
 `flume_report.csv` in the current directory, unless overridden by the flags below.
 
-If `--output` already points at a file that exists, `flume-report` asks for confirmation before
-overwriting it (`y`/`N`, defaulting to no). Answering no exits cleanly (code 0) without writing or
-making any API calls.
+If `--output` already points at a file that exists, `flume-report` first checks that file's bucket
+(inferred from the gap between existing rows) against the requested `--bucket` and errors out (exit
+1, no API calls) if they don't match. If they match (or the existing bucket can't be determined), it
+then asks for confirmation before overwriting (`y`/`N`, defaulting to no). Answering no exits cleanly
+(code 0) without writing or making any API calls.
 
 Shared flags (available on both `day` and `month`):
 
@@ -156,6 +158,12 @@ then refreshes it automatically. Delete this file to force a fresh login.
   `y`/`N` confirmation before writing (checked before any API calls, so declining costs no
   rate-limited requests). There's currently no flag to skip the prompt (e.g. for scripting/cron
   use) and no merge/append support — declining just exits 0 without changing the file.
+- **Bucket mismatch on overwrite**: since the CSV doesn't store which `--bucket` it was written
+  with, the existing file's bucket is *inferred* from the time gap between its first two rows for
+  a device (e.g. ~60s apart → `MIN`, ~1hr → `HR`). This is a heuristic, not a stored fact — a
+  sparse or edited file can produce a wrong or undetectable guess. A confident mismatch errors out
+  (exit 1) before the overwrite prompt; an undetermined bucket is treated as compatible and falls
+  through to the normal prompt.
 - **Rate limiting**: Flume enforces a 120 requests/hour limit per account. With `month`'s
   default `MIN`-bucket paging above, an account with several devices can hit this in a single
   run. Hitting it produces a clear `error: Flume API rate limit reached (429): ...` message and

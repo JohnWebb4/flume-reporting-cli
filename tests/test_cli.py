@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 
 from flume_cli import cli
-from flume_cli.errors import ConfigError
+from flume_cli.errors import ConfigError, FlumeCliError
 
 
 def _dt(*args):
@@ -153,6 +153,38 @@ class TestRejectTodayOrFutureDay:
         cli._reject_today_or_future_day(2026, 9, 19, now=now)
 
 
+class TestRejectBucketMismatch:
+    def test_no_op_when_file_does_not_exist(self, tmp_path):
+        cli._reject_bucket_mismatch(tmp_path / "missing.csv", "HR")
+
+    def test_no_op_when_bucket_cannot_be_inferred(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text("device_id,datetime,value,units\n")
+
+        cli._reject_bucket_mismatch(existing, "HR")
+
+    def test_no_op_when_bucket_matches(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 01:00:00,1.0,GALLONS\n"
+        )
+
+        cli._reject_bucket_mismatch(existing, "HR")
+
+    def test_raises_when_bucket_differs(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 01:00:00,1.0,GALLONS\n"
+        )
+
+        with pytest.raises(FlumeCliError, match="HR"):
+            cli._reject_bucket_mismatch(existing, "MIN")
+
+
 class TestConfirmOutputOverwrite:
     def test_returns_true_when_file_does_not_exist(self, tmp_path):
         def fail_if_called(_msg):
@@ -220,3 +252,30 @@ class TestMainAbortsOnDeclinedOverwrite:
 
         assert exit_code == 0
         assert "Kept existing" in capsys.readouterr().out
+
+
+class TestMainRejectsBucketMismatchBeforePrompting:
+    def test_mismatch_exits_1_without_prompting_or_any_api_calls(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        output = tmp_path / "existing.csv"
+        output.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 01:00:00,1.0,GALLONS\n"
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("should not be called on bucket mismatch")
+
+        monkeypatch.setattr(cli, "FlumeClient", fail_if_called)
+        monkeypatch.setattr("builtins.input", fail_if_called)
+        monkeypatch.setenv("FLUME_CLIENT_ID", "id")
+        monkeypatch.setenv("FLUME_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("FLUME_USERNAME", "user@example.com")
+        monkeypatch.setenv("FLUME_PASSWORD", "pw")
+
+        exit_code = cli.main(["day", "--output", str(output), "--bucket", "MIN"])
+
+        assert exit_code == 1
+        assert "error:" in capsys.readouterr().err

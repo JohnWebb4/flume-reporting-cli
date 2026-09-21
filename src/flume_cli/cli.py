@@ -103,6 +103,19 @@ def _reject_today_or_future_day(year, month, day, now=None):
         )
 
 
+def _reject_bucket_mismatch(output_path, requested_bucket):
+    if not os.path.exists(output_path):
+        return
+    existing_bucket = report.infer_bucket_from_csv(output_path)
+    if existing_bucket is not None and existing_bucket != requested_bucket:
+        raise FlumeCliError(
+            f"{output_path} appears to have been written with bucket {existing_bucket}, "
+            f"but this run requested bucket {requested_bucket}. Refusing to overwrite a "
+            f"differently bucketed report; use --bucket {existing_bucket} or a different "
+            "--output."
+        )
+
+
 def _confirm_output_overwrite(output_path, *, prompt=None):
     if not os.path.exists(output_path):
         return True
@@ -135,6 +148,8 @@ def main(argv=None):
             _reject_today_or_future_day(args.year, args.month, args.day)
         elif args.command == "month" and args.month is not None:
             _reject_current_or_future_month(args.year, args.month)
+
+        _reject_bucket_mismatch(args.output, args.bucket)
 
         if not _confirm_output_overwrite(args.output):
             print(f"Kept existing {args.output}; nothing written.")

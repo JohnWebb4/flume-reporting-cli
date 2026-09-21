@@ -315,3 +315,72 @@ class TestWriteCsv:
         count = report.write_csv(row_generator(), output)
 
         assert count == 1
+
+
+class TestInferBucketFromCsv:
+    def _write(self, output, rows):
+        report.write_csv(rows, output)
+
+    def _row(self, device_id, dt, value=1.0):
+        return {"device_id": device_id, "datetime": dt, "value": value, "units": "GALLONS"}
+
+    def test_returns_none_for_missing_file(self, tmp_path):
+        assert report.infer_bucket_from_csv(tmp_path / "missing.csv") is None
+
+    def test_returns_none_for_header_only_file(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [])
+
+        assert report.infer_bucket_from_csv(output) is None
+
+    def test_returns_none_for_single_row(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [self._row("dev-1", "2026-09-01 00:00:00")])
+
+        assert report.infer_bucket_from_csv(output) is None
+
+    def test_detects_min_bucket(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-1", "2026-09-01 00:01:00"),
+        ])
+
+        assert report.infer_bucket_from_csv(output) == "MIN"
+
+    def test_detects_hr_bucket(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-1", "2026-09-01 01:00:00"),
+        ])
+
+        assert report.infer_bucket_from_csv(output) == "HR"
+
+    def test_detects_day_bucket(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-1", "2026-09-02 00:00:00"),
+        ])
+
+        assert report.infer_bucket_from_csv(output) == "DAY"
+
+    def test_returns_none_for_unrecognized_gap(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-1", "2026-09-01 00:08:20"),  # 500s -- not close to any bucket
+        ])
+
+        assert report.infer_bucket_from_csv(output) is None
+
+    def test_skips_other_devices_to_find_the_same_device_gap(self, tmp_path):
+        output = tmp_path / "report.csv"
+        self._write(output, [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-2", "2026-09-01 00:30:00"),
+            self._row("dev-1", "2026-09-01 01:00:00"),
+        ])
+
+        assert report.infer_bucket_from_csv(output) == "HR"

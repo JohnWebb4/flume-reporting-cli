@@ -106,6 +106,55 @@ def build_report_rows(client, user_id, device_ids, *, windows, bucket, units):
                 }
 
 
+_BUCKET_INTERVAL_SECONDS = {
+    "MIN": 60,
+    "HR": 3600,
+    "DAY": 86400,
+    "MON": 30 * 86400,
+    "YR": 365 * 86400,
+}
+
+
+def infer_bucket_from_csv(output_path):
+    """Best-effort guess at the --bucket used to write an existing report CSV.
+
+    The CSV has no bucket column, so this compares the datetime gap between
+    the first two consecutive rows for the same device against each known
+    bucket's typical interval. Returns the closest matching bucket, or None
+    if there isn't enough data to tell (missing/empty file, a single row, or
+    a gap that doesn't clearly match any bucket) -- callers should treat
+    None as "can't tell, don't block".
+    """
+    try:
+        with open(output_path, newline="") as f:
+            rows = csv.DictReader(f)
+            first = next(rows, None)
+            if first is None:
+                return None
+            second = next(
+                (row for row in rows if row.get("device_id") == first.get("device_id")), None
+            )
+            if second is None:
+                return None
+            first_dt = datetime.strptime(first["datetime"], DATETIME_FORMAT)  # noqa: DTZ007 -- naive local time is intentional, matches write_csv's own format
+            second_dt = datetime.strptime(second["datetime"], DATETIME_FORMAT)  # noqa: DTZ007
+    except (OSError, csv.Error, KeyError, ValueError):
+        return None
+
+    gap_seconds = abs((second_dt - first_dt).total_seconds())
+    if gap_seconds == 0:
+        return None
+
+    closest_bucket = min(
+        _BUCKET_INTERVAL_SECONDS,
+        key=lambda bucket: abs(_BUCKET_INTERVAL_SECONDS[bucket] - gap_seconds),
+    )
+    expected_seconds = _BUCKET_INTERVAL_SECONDS[closest_bucket]
+    if abs(expected_seconds - gap_seconds) > expected_seconds * 0.1:
+        return None
+    return closest_bucket
+
+
 def write_csv(rows, output_path):
     count = 0
     with open(output_path, "w", newline="") as f:
