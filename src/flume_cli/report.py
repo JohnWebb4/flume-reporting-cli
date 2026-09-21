@@ -1,4 +1,5 @@
 import csv
+import os
 from datetime import datetime, timedelta
 
 from flume_cli.errors import FlumeCliError
@@ -104,6 +105,110 @@ def build_report_rows(client, user_id, device_ids, *, windows, bucket, units):
                     "value": reading["value"],
                     "units": units,
                 }
+
+
+_BUCKET_INTERVAL_SECONDS = {
+    "MIN": 60,
+    "HR": 3600,
+    "DAY": 86400,
+    "MON": 30 * 86400,
+    "YR": 365 * 86400,
+}
+
+
+def read_csv_rows(output_path):
+    """Read an existing report CSV into a list of row dicts.
+
+    Returns [] if the file doesn't exist -- including header-only files,
+    which naturally produce no data rows once opened. Any other read
+    failure (permissions, garbled file, etc.) propagates; callers that want
+    a forgiving, non-blocking read (like infer_bucket_from_csv) should catch
+    around their own call instead of relying on this to swallow errors.
+    """
+    if not os.path.exists(output_path):
+        return []
+    with open(output_path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def infer_bucket_from_csv(output_path):
+    """Best-effort guess at the --bucket used to write an existing report CSV.
+
+    The CSV has no bucket column, so this compares the datetime gap between
+    the first two consecutive rows for the same device against each known
+    bucket's typical interval. Returns the closest matching bucket, or None
+    if there isn't enough data to tell (missing/empty file, a single row, or
+    a gap that doesn't clearly match any bucket) -- callers should treat
+    None as "can't tell, don't block".
+    """
+    try:
+        rows = read_csv_rows(output_path)
+        first = rows[0] if rows else None
+        if first is None:
+            return None
+        second = next(
+            (row for row in rows[1:] if row.get("device_id") == first.get("device_id")), None
+        )
+        if second is None:
+            return None
+        first_dt = datetime.strptime(first["datetime"], DATETIME_FORMAT)  # noqa: DTZ007 -- naive local time is intentional, matches write_csv's own format
+        second_dt = datetime.strptime(second["datetime"], DATETIME_FORMAT)  # noqa: DTZ007
+    except (OSError, csv.Error, KeyError, ValueError):
+        return None
+
+    gap_seconds = abs((second_dt - first_dt).total_seconds())
+    if gap_seconds == 0:
+        return None
+
+    closest_bucket = min(
+        _BUCKET_INTERVAL_SECONDS,
+        key=lambda bucket: abs(_BUCKET_INTERVAL_SECONDS[bucket] - gap_seconds),
+    )
+    expected_seconds = _BUCKET_INTERVAL_SECONDS[closest_bucket]
+    if abs(expected_seconds - gap_seconds) > expected_seconds * 0.1:
+        return None
+    return closest_bucket
+
+
+def _index_row(by_device, device_order, row):
+    device_id = row["device_id"]
+    if device_id not in by_device:
+        by_device[device_id] = {}
+        device_order.append(device_id)
+    by_device[device_id][row["datetime"]] = row
+
+
+def merge_rows(existing_rows, new_rows):
+    """Merge freshly fetched rows into an existing report's rows.
+
+    Grouped by device (existing devices first, then any new ones, in
+    first-seen order); within a device, a new row overwrites an existing row
+    sharing the same datetime, and each device's rows are re-sorted
+    ascending by datetime -- so new readings land in their correct
+    chronological position rather than being appended to the end.
+    """
+    by_device = {}
+    device_order = []
+    for row in existing_rows:
+        _index_row(by_device, device_order, row)
+    for row in new_rows:
+        _index_row(by_device, device_order, row)
+
+    merged = []
+    for device_id in device_order:
+        try:
+            sorted_datetimes = sorted(
+                by_device[device_id],
+                key=lambda dt: datetime.strptime(dt, DATETIME_FORMAT),  # noqa: DTZ007 -- naive local time is intentional, matches write_csv's own format
+            )
+        except ValueError as exc:
+            raise FlumeCliError(
+                f"Cannot merge: found a datetime that doesn't match the expected format "
+                f"{DATETIME_FORMAT!r} for device {device_id} ({exc})."
+            ) from exc
+        for dt in sorted_datetimes:
+            merged.append(by_device[device_id][dt])
+    return merged
 
 
 def write_csv(rows, output_path):

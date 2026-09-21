@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from datetime import datetime
 
@@ -102,6 +103,43 @@ def _reject_today_or_future_day(year, month, day, now=None):
         )
 
 
+def _reject_bucket_mismatch(output_path, requested_bucket):
+    if not os.path.exists(output_path):
+        return
+    existing_bucket = report.infer_bucket_from_csv(output_path)
+    if existing_bucket is not None and existing_bucket != requested_bucket:
+        raise FlumeCliError(
+            f"{output_path} appears to have been written with bucket {existing_bucket}, "
+            f"but this run requested bucket {requested_bucket}. Refusing to merge into a "
+            f"differently bucketed report; use --bucket {existing_bucket} or a different "
+            "--output."
+        )
+
+
+def _reject_units_mismatch(output_path, requested_units):
+    if not os.path.exists(output_path):
+        return
+    existing_rows = report.read_csv_rows(output_path)
+    if not existing_rows:
+        return
+    existing_units = existing_rows[0].get("units")
+    if existing_units and existing_units != requested_units:
+        raise FlumeCliError(
+            f"{output_path} appears to have been written with units {existing_units}, "
+            f"but this run requested units {requested_units}. Refusing to merge into a "
+            f"report using different units; use --units {existing_units} or a different "
+            "--output."
+        )
+
+
+def _confirm_output_merge(output_path, *, prompt=None):
+    if not os.path.exists(output_path):
+        return True
+    prompt = prompt or input
+    answer = prompt(f"{output_path} already exists. Merge fetched data into it? [y/N]: ")
+    return answer.strip().lower() in ("y", "yes")
+
+
 def main(argv=None):
     load_dotenv_if_present()
     parser = build_parser()
@@ -127,6 +165,13 @@ def main(argv=None):
         elif args.command == "month" and args.month is not None:
             _reject_current_or_future_month(args.year, args.month)
 
+        _reject_bucket_mismatch(args.output, args.bucket)
+        _reject_units_mismatch(args.output, args.units)
+
+        if not _confirm_output_merge(args.output):
+            print(f"Kept existing {args.output}; nothing written.")
+            return 0
+
         client = FlumeClient()
         token = auth.get_valid_token(client, creds)
         client.set_token(token.access_token)
@@ -148,6 +193,8 @@ def main(argv=None):
             client, token.user_id, device_ids,
             windows=windows, bucket=args.bucket, units=args.units,
         )
+        if os.path.exists(args.output):
+            rows = report.merge_rows(report.read_csv_rows(args.output), rows)
         count = report.write_csv(rows, args.output)
     except FlumeCliError as exc:
         print(f"error: {exc}", file=sys.stderr)

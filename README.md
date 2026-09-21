@@ -61,6 +61,15 @@ The CLI requires one of two subcommands:
 Both write usage at 1-minute granularity (in gallons) for every water sensor on the account to
 `flume_report.csv` in the current directory, unless overridden by the flags below.
 
+If `--output` already points at a file that exists, `flume-report` first checks that file's bucket
+(inferred from the gap between existing rows) and its `units` column against the requested `--bucket`
+and `--units`, and errors out (exit 1, no API calls) if either doesn't match. If both match (or the
+existing bucket can't be determined), it then asks for confirmation before merging (`y`/`N`,
+defaulting to no). Answering no exits cleanly (code 0) without writing or making any API calls.
+Answering yes **merges** the freshly fetched rows into the existing file rather than replacing it —
+a new reading is inserted in its correct chronological position (and overwrites any existing reading
+for the same device and timestamp), instead of being appended to the end.
+
 Shared flags (available on both `day` and `month`):
 
 | Flag | Default | Description |
@@ -148,6 +157,26 @@ then refreshes it automatically. Delete this file to force a fresh login.
 - **Day range**: `flume-report day --day D --month M --year Y` only accepts a day strictly
   before today — it's rejected up front with a clear error rather than silently returning an
   empty or partial report.
+- **Merge confirmation**: if `--output` points at an existing file, the CLI prompts for
+  `y`/`N` confirmation before merging (checked before any API calls, so declining costs no
+  rate-limited requests). There's currently no flag to skip the prompt (e.g. for scripting/cron
+  use) — declining just exits 0 without changing the file.
+- **Bucket mismatch on merge**: since the CSV doesn't store which `--bucket` it was written
+  with, the existing file's bucket is *inferred* from the time gap between its first two rows for
+  a device (e.g. ~60s apart → `MIN`, ~1hr → `HR`). This is a heuristic, not a stored fact — a
+  sparse or edited file can produce a wrong or undetectable guess. A confident mismatch errors out
+  (exit 1) before the merge prompt; an undetermined bucket is treated as compatible and falls
+  through to the normal prompt.
+- **Units mismatch on merge**: unlike bucket, `units` is a real column in the CSV, so this
+  check is exact rather than inferred — if the existing file's `units` differ from the requested
+  `--units`, the CLI errors out (exit 1) before the merge prompt rather than mixing unit
+  systems in one file.
+- **Merging on confirmation**: answering `y` to the merge prompt merges the freshly
+  fetched rows into the existing file instead of replacing it. Rows are grouped by device and
+  sorted ascending by datetime; a fetched row overwrites an existing row sharing the same device
+  and datetime, and devices present in the existing file but not covered by this run are left
+  untouched. There's no way to instead force a full replace of an existing file's contents (short
+  of deleting it first).
 - **Rate limiting**: Flume enforces a 120 requests/hour limit per account. With `month`'s
   default `MIN`-bucket paging above, an account with several devices can hit this in a single
   run. Hitting it produces a clear `error: Flume API rate limit reached (429): ...` message and
