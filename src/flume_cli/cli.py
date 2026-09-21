@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from datetime import datetime
 
@@ -102,6 +103,14 @@ def _reject_today_or_future_day(year, month, day, now=None):
         )
 
 
+def _confirm_output_overwrite(output_path, *, prompt=None):
+    if not os.path.exists(output_path):
+        return True
+    prompt = prompt or input
+    answer = prompt(f"{output_path} already exists. Overwrite? [y/N]: ")
+    return answer.strip().lower() in ("y", "yes")
+
+
 def main(argv=None):
     load_dotenv_if_present()
     parser = build_parser()
@@ -126,6 +135,10 @@ def main(argv=None):
             _reject_today_or_future_day(args.year, args.month, args.day)
         elif args.command == "month" and args.month is not None:
             _reject_current_or_future_month(args.year, args.month)
+
+        if not _confirm_output_overwrite(args.output):
+            print(f"Kept existing {args.output}; nothing written.")
+            return 0
 
         client = FlumeClient()
         token = auth.get_valid_token(client, creds)

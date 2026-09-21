@@ -151,3 +151,72 @@ class TestRejectTodayOrFutureDay:
         now = _dt(2026, 9, 20)
 
         cli._reject_today_or_future_day(2026, 9, 19, now=now)
+
+
+class TestConfirmOutputOverwrite:
+    def test_returns_true_when_file_does_not_exist(self, tmp_path):
+        def fail_if_called(_msg):
+            raise AssertionError("prompt should not be called when file does not exist")
+
+        result = cli._confirm_output_overwrite(tmp_path / "missing.csv", prompt=fail_if_called)
+
+        assert result is True
+
+    @pytest.mark.parametrize("answer", ["y", "Y", "yes", "YES"])
+    def test_returns_true_for_yes_answer(self, tmp_path, answer):
+        existing = tmp_path / "report.csv"
+        existing.write_text("")
+
+        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: answer)
+
+        assert result is True
+
+    def test_returns_false_for_no_answer(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text("")
+
+        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: "n")
+
+        assert result is False
+
+    def test_returns_false_for_empty_answer(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text("")
+
+        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: "")
+
+        assert result is False
+
+    def test_prompt_message_includes_output_path(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text("")
+        messages = []
+
+        def capture(msg):
+            messages.append(msg)
+            return "n"
+
+        cli._confirm_output_overwrite(existing, prompt=capture)
+
+        assert str(existing) in messages[0]
+
+
+class TestMainAbortsOnDeclinedOverwrite:
+    def test_declining_exits_0_without_any_api_calls(self, tmp_path, monkeypatch, capsys):
+        output = tmp_path / "existing.csv"
+        output.write_text("device_id,datetime,value,units\n")
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("API should not be called when overwrite is declined")
+
+        monkeypatch.setattr(cli, "FlumeClient", fail_if_called)
+        monkeypatch.setenv("FLUME_CLIENT_ID", "id")
+        monkeypatch.setenv("FLUME_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("FLUME_USERNAME", "user@example.com")
+        monkeypatch.setenv("FLUME_PASSWORD", "pw")
+        monkeypatch.setattr("builtins.input", lambda _msg: "n")
+
+        exit_code = cli.main(["day", "--output", str(output)])
+
+        assert exit_code == 0
+        assert "Kept existing" in capsys.readouterr().out

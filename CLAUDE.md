@@ -67,7 +67,9 @@ Request flow through the modules in `src/flume_cli/`:
    message + exit code (2 for config errors, 1 for everything else). A requested `--month`/`--year`
    that's the current month or later is rejected via `ConfigError` before any API calls; similarly a
    requested `--day`/`--month`/`--year` that's today or later is rejected via a separate `ConfigError`
-   check.
+   check. An existing `--output` file triggers a `y`/`N` overwrite confirmation
+   (`_confirm_output_overwrite`), checked before `FlumeClient`/auth/device-fetch, since declining
+   should cost no API requests toward Flume's rate limit.
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.

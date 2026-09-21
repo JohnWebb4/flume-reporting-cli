@@ -61,6 +61,10 @@ The CLI requires one of two subcommands:
 Both write usage at 1-minute granularity (in gallons) for every water sensor on the account to
 `flume_report.csv` in the current directory, unless overridden by the flags below.
 
+If `--output` already points at a file that exists, `flume-report` asks for confirmation before
+overwriting it (`y`/`N`, defaulting to no). Answering no exits cleanly (code 0) without writing or
+making any API calls.
+
 Shared flags (available on both `day` and `month`):
 
 | Flag | Default | Description |
@@ -148,6 +152,10 @@ then refreshes it automatically. Delete this file to force a fresh login.
 - **Day range**: `flume-report day --day D --month M --year Y` only accepts a day strictly
   before today — it's rejected up front with a clear error rather than silently returning an
   empty or partial report.
+- **Overwrite confirmation**: if `--output` points at an existing file, the CLI prompts for
+  `y`/`N` confirmation before writing (checked before any API calls, so declining costs no
+  rate-limited requests). There's currently no flag to skip the prompt (e.g. for scripting/cron
+  use) and no merge/append support — declining just exits 0 without changing the file.
 - **Rate limiting**: Flume enforces a 120 requests/hour limit per account. With `month`'s
   default `MIN`-bucket paging above, an account with several devices can hit this in a single
   run. Hitting it produces a clear `error: Flume API rate limit reached (429): ...` message and
