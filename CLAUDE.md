@@ -11,7 +11,8 @@ to a CSV file. Single-purpose tool, no server component, no database.
 
 ```bash
 pip install -e .          # editable install; registers the `flume-report` console script
-flume-report day --days 3 --bucket HR --device-id <id> --units LITERS --output usage.csv
+flume-report day --bucket HR --device-id <id> --units LITERS --output usage.csv   # yesterday's usage
+flume-report day --day 15 --month 3 --year 2025   # a specific past day
 flume-report month         # last full calendar month (also: python -m flume_cli month)
 flume-report month --month 3 --year 2025   # a specific past calendar month
 ```
@@ -53,17 +54,20 @@ Request flow through the modules in `src/flume_cli/`:
    `FlumeApiError`) otherwise.
 4. **`report.py`** — turns a device list + a pre-computed list of `(since, until)` windows into CSV
    rows via `build_report_rows(..., windows=...)`. Usage queries are chunked into one HTTP request
-   **per calendar day** (`daily_windows`/`month_windows`), not one request for the whole range — the
+   **per calendar day** (`day_windows`/`month_windows`), not one request for the whole range — the
    Flume query endpoint has no documented row/range limit, so day-sized chunks are a defensive choice.
    `report.py` itself has no notion of "day mode" vs. "month mode" — that decision lives in `cli.py`.
 5. **`cli.py`** — argparse wiring with `day` and `month` subcommands (sharing `--output`, `--bucket`,
-   `--device-id`, `--units` via a `parents=` parser; `--days` is `day`-only, `--month`/`--year` are
-   `month`-only and must be given together). `main()` picks `report.daily_windows`/
-   `report.month_windows` based on `args.command` (passing `year`/`month` through when given),
-   then orchestrates config → auth → device list → report rows → CSV, and is the only place that
-   catches `FlumeCliError` and turns it into an `error: ...` message + exit code (2 for config
-   errors, 1 for everything else). A requested `--month`/`--year` that's the current month or
-   later is rejected via `ConfigError` before any API calls.
+   `--device-id`, `--units` via a `parents=` parser; `day_parser` owns `--day`/`--month`/`--year`
+   which must all be given together, defaulting to yesterday; `month_parser` separately owns its own
+   `--month`/`--year` which must be given together, defaulting to the last full calendar month).
+   `main()` picks `report.day_windows`/`report.month_windows` based on `args.command` (passing
+   `year`/`month`/`day` through when given), then orchestrates config → auth → device list → report
+   rows → CSV, and is the only place that catches `FlumeCliError` and turns it into an `error: ...`
+   message + exit code (2 for config errors, 1 for everything else). A requested `--month`/`--year`
+   that's the current month or later is rejected via `ConfigError` before any API calls; similarly a
+   requested `--day`/`--month`/`--year` that's today or later is rejected via a separate `ConfigError`
+   check.
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.
@@ -83,4 +87,4 @@ Any CLI or public API change must also update README.md usage examples and the C
   not a settled spec.
 - **Bucket/paging choices in `report.py`** (day-sized chunks, `MIN` default bucket) are explicitly
   flagged in code comments as defensive assumptions rather than verified API limits — see the comments
-  in `daily_windows`/`month_windows` before changing chunk size.
+  in `day_windows`/`month_windows` before changing chunk size.

@@ -32,35 +32,60 @@ def fixed_now(monkeypatch):
     return _apply
 
 
-class TestDailyWindows:
-    def test_returns_one_window_per_day_oldest_first(self):
-        end = _dt(2026, 9, 20, 8, 30, 0)
+class TestDayWindows:
+    def test_defaults_to_yesterday(self, fixed_now):
+        fixed_now(_dt(2026, 9, 20, 8, 30, 0))
 
-        windows = report.daily_windows(3, end=end)
+        windows = report.day_windows()
 
-        assert windows == [
-            ("2026-09-17 08:30:00", "2026-09-18 08:30:00"),
-            ("2026-09-18 08:30:00", "2026-09-19 08:30:00"),
-            ("2026-09-19 08:30:00", "2026-09-20 08:30:00"),
-        ]
+        assert windows == [("2026-09-19 00:00:00", "2026-09-20 00:00:00")]
 
-    def test_windows_are_contiguous(self):
-        end = _dt(2026, 9, 20, 8, 30, 0)
+    def test_yesterday_across_month_boundary(self, fixed_now):
+        fixed_now(_dt(2026, 10, 1, 8, 0, 0))
 
-        windows = report.daily_windows(5, end=end)
+        windows = report.day_windows()
 
-        for (_, until), (next_since, _) in zip(windows, windows[1:]):
-            assert until == next_since
+        assert windows == [("2026-09-30 00:00:00", "2026-10-01 00:00:00")]
 
-    def test_zero_days_returns_no_windows(self):
-        assert report.daily_windows(0, end=_dt(2026, 9, 20)) == []
+    def test_yesterday_across_year_boundary(self, fixed_now):
+        fixed_now(_dt(2026, 1, 1, 8, 0, 0))
 
-    def test_defaults_end_to_now(self, fixed_now):
-        fixed_now(_dt(2026, 9, 20, 12, 0, 0))
+        windows = report.day_windows()
 
-        windows = report.daily_windows(1)
+        assert windows == [("2025-12-31 00:00:00", "2026-01-01 00:00:00")]
 
-        assert windows == [("2026-09-19 12:00:00", "2026-09-20 12:00:00")]
+    def test_explicit_year_month_day(self):
+        windows = report.day_windows(year=2025, month=3, day=15)
+
+        assert windows == [("2025-03-15 00:00:00", "2025-03-16 00:00:00")]
+
+    def test_explicit_year_month_day_takes_precedence_over_reference(self):
+        reference = _dt(2020, 1, 1)
+
+        windows = report.day_windows(reference, year=2025, month=3, day=15)
+
+        assert windows == [("2025-03-15 00:00:00", "2025-03-16 00:00:00")]
+
+    def test_explicit_december_31_rolls_to_next_january(self):
+        windows = report.day_windows(year=2025, month=12, day=31)
+
+        assert windows == [("2025-12-31 00:00:00", "2026-01-01 00:00:00")]
+
+    def test_returns_single_window(self):
+        windows = report.day_windows(year=2025, month=3, day=15)
+
+        assert len(windows) == 1
+
+    def test_window_spans_one_day(self):
+        windows = report.day_windows(year=2025, month=3, day=15)
+        since, until = windows[0]
+        since_dt = datetime.strptime(since, report.DATETIME_FORMAT)  # noqa: DTZ007
+        until_dt = datetime.strptime(until, report.DATETIME_FORMAT)  # noqa: DTZ007
+        assert (until_dt - since_dt).total_seconds() == 24 * 3600
+
+    def test_invalid_day_of_month_raises_value_error(self):
+        with pytest.raises(ValueError, match="day 30 must be in range 1..28 for month 2"):
+            report.day_windows(year=2025, month=2, day=30)
 
 
 class TestMonthWindows:
