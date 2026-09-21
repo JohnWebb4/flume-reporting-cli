@@ -19,3 +19,9 @@ flume-report = "flume_cli.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/flume_cli"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.16.8",
+]
