@@ -21,30 +21,49 @@ def daily_windows(days, end=None):
         windows.append((since.strftime(DATETIME_FORMAT), until.strftime(DATETIME_FORMAT)))
     return windows
 
-def month_windows(reference=None):
-    """Daily windows covering the last full calendar month, oldest first.
+def month_windows(reference=None, *, year=None, month=None):
+    """Daily windows covering a calendar month, oldest first.
 
-    e.g. run in September, this covers Aug 1 00:00:00 -> Sep 1 00:00:00,
-    chunked into one request per day (see daily_windows for why: no
-    documented per-request row/range limit on the query endpoint).
+    With no arguments, covers the last full calendar month relative to
+    `reference` (or now, if `reference` is omitted) -- e.g. run in September,
+    this covers Aug 1 00:00:00 -> Sep 1 00:00:00.
+
+    With `year`/`month` given (both required together -- see cli.py for that
+    validation), covers that exact calendar month instead.
+
+    Either way, the month is chunked into one request per day (see
+    daily_windows for why: no documented per-request row/range limit on the
+    query endpoint).
     """
-    reference = reference or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
-    start_of_this_month = reference.replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    )
-    if start_of_this_month.month == 1:
-        start_of_last_month = start_of_this_month.replace(
-            year=start_of_this_month.year - 1, month=12
+    if year is not None and month is not None:
+        start_of_target_month = datetime(year, month, 1)  # noqa: DTZ001 -- naive local time is intentional, see docstring
+    else:
+        reference = reference or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
+        start_of_this_month = reference.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        if start_of_this_month.month == 1:
+            start_of_target_month = start_of_this_month.replace(
+                year=start_of_this_month.year - 1, month=12
+            )
+        else:
+            start_of_target_month = start_of_this_month.replace(
+                month=start_of_this_month.month - 1
+            )
+
+    if start_of_target_month.month == 12:
+        start_of_next_month = start_of_target_month.replace(
+            year=start_of_target_month.year + 1, month=1
         )
     else:
-        start_of_last_month = start_of_this_month.replace(
-            month=start_of_this_month.month - 1
+        start_of_next_month = start_of_target_month.replace(
+            month=start_of_target_month.month + 1
         )
 
     windows = []
-    day_start = start_of_last_month
-    while day_start < start_of_this_month:
-        day_end = min(day_start + timedelta(days=1), start_of_this_month)
+    day_start = start_of_target_month
+    while day_start < start_of_next_month:
+        day_end = min(day_start + timedelta(days=1), start_of_next_month)
         windows.append((day_start.strftime(DATETIME_FORMAT), day_end.strftime(DATETIME_FORMAT)))
         day_start = day_end
     return windows

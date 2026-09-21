@@ -13,6 +13,7 @@ to a CSV file. Single-purpose tool, no server component, no database.
 pip install -e .          # editable install; registers the `flume-report` console script
 flume-report day --days 3 --bucket HR --device-id <id> --units LITERS --output usage.csv
 flume-report month         # last full calendar month (also: python -m flume_cli month)
+flume-report month --month 3 --year 2025   # a specific past calendar month
 ```
 
 Dev tooling (`ruff`, `pytest`) is managed via `uv` and declared in the `dev` dependency group in
@@ -56,11 +57,13 @@ Request flow through the modules in `src/flume_cli/`:
    Flume query endpoint has no documented row/range limit, so day-sized chunks are a defensive choice.
    `report.py` itself has no notion of "day mode" vs. "month mode" — that decision lives in `cli.py`.
 5. **`cli.py`** — argparse wiring with `day` and `month` subcommands (sharing `--output`, `--bucket`,
-   `--device-id`, `--units` via a `parents=` parser; `--days` is `day`-only). `main()` picks
-   `report.daily_windows`/`report.month_windows` based on `args.command`, then orchestrates
-   config → auth → device list → report rows → CSV, and is the only place that catches
-   `FlumeCliError` and turns it into an `error: ...` message + exit code (2 for config errors, 1 for
-   everything else).
+   `--device-id`, `--units` via a `parents=` parser; `--days` is `day`-only, `--month`/`--year` are
+   `month`-only and must be given together). `main()` picks `report.daily_windows`/
+   `report.month_windows` based on `args.command` (passing `year`/`month` through when given),
+   then orchestrates config → auth → device list → report rows → CSV, and is the only place that
+   catches `FlumeCliError` and turns it into an `error: ...` message + exit code (2 for config
+   errors, 1 for everything else). A requested `--month`/`--year` that's the current month or
+   later is rejected via `ConfigError` before any API calls.
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.
