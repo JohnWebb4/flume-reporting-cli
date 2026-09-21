@@ -216,12 +216,12 @@ class TestRejectUnitsMismatch:
             cli._reject_units_mismatch(existing, "LITERS")
 
 
-class TestConfirmOutputOverwrite:
+class TestConfirmOutputMerge:
     def test_returns_true_when_file_does_not_exist(self, tmp_path):
         def fail_if_called(_msg):
             raise AssertionError("prompt should not be called when file does not exist")
 
-        result = cli._confirm_output_overwrite(tmp_path / "missing.csv", prompt=fail_if_called)
+        result = cli._confirm_output_merge(tmp_path / "missing.csv", prompt=fail_if_called)
 
         assert result is True
 
@@ -230,7 +230,7 @@ class TestConfirmOutputOverwrite:
         existing = tmp_path / "report.csv"
         existing.write_text("")
 
-        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: answer)
+        result = cli._confirm_output_merge(existing, prompt=lambda _msg: answer)
 
         assert result is True
 
@@ -238,7 +238,7 @@ class TestConfirmOutputOverwrite:
         existing = tmp_path / "report.csv"
         existing.write_text("")
 
-        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: "n")
+        result = cli._confirm_output_merge(existing, prompt=lambda _msg: "n")
 
         assert result is False
 
@@ -246,7 +246,7 @@ class TestConfirmOutputOverwrite:
         existing = tmp_path / "report.csv"
         existing.write_text("")
 
-        result = cli._confirm_output_overwrite(existing, prompt=lambda _msg: "")
+        result = cli._confirm_output_merge(existing, prompt=lambda _msg: "")
 
         assert result is False
 
@@ -259,18 +259,18 @@ class TestConfirmOutputOverwrite:
             messages.append(msg)
             return "n"
 
-        cli._confirm_output_overwrite(existing, prompt=capture)
+        cli._confirm_output_merge(existing, prompt=capture)
 
         assert str(existing) in messages[0]
 
 
-class TestMainAbortsOnDeclinedOverwrite:
+class TestMainAbortsOnDeclinedMerge:
     def test_declining_exits_0_without_any_api_calls(self, tmp_path, monkeypatch, capsys):
         output = tmp_path / "existing.csv"
         output.write_text("device_id,datetime,value,units\n")
 
         def fail_if_called(*args, **kwargs):
-            raise AssertionError("API should not be called when overwrite is declined")
+            raise AssertionError("API should not be called when merge is declined")
 
         monkeypatch.setattr(cli, "FlumeClient", fail_if_called)
         monkeypatch.setenv("FLUME_CLIENT_ID", "id")
@@ -341,7 +341,7 @@ class TestMainRejectsUnitsMismatchBeforePrompting:
         assert "error:" in capsys.readouterr().err
 
 
-class TestMainMergesOnConfirmedOverwrite:
+class TestMainMergesWhenConfirmed:
     def test_new_rows_are_merged_into_existing_rows_preserving_sort_order(
         self, tmp_path, monkeypatch
     ):

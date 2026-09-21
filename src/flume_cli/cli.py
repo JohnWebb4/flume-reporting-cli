@@ -110,7 +110,7 @@ def _reject_bucket_mismatch(output_path, requested_bucket):
     if existing_bucket is not None and existing_bucket != requested_bucket:
         raise FlumeCliError(
             f"{output_path} appears to have been written with bucket {existing_bucket}, "
-            f"but this run requested bucket {requested_bucket}. Refusing to overwrite a "
+            f"but this run requested bucket {requested_bucket}. Refusing to merge into a "
             f"differently bucketed report; use --bucket {existing_bucket} or a different "
             "--output."
         )
@@ -126,17 +126,17 @@ def _reject_units_mismatch(output_path, requested_units):
     if existing_units and existing_units != requested_units:
         raise FlumeCliError(
             f"{output_path} appears to have been written with units {existing_units}, "
-            f"but this run requested units {requested_units}. Refusing to overwrite a "
+            f"but this run requested units {requested_units}. Refusing to merge into a "
             f"report using different units; use --units {existing_units} or a different "
             "--output."
         )
 
 
-def _confirm_output_overwrite(output_path, *, prompt=None):
+def _confirm_output_merge(output_path, *, prompt=None):
     if not os.path.exists(output_path):
         return True
     prompt = prompt or input
-    answer = prompt(f"{output_path} already exists. Overwrite? [y/N]: ")
+    answer = prompt(f"{output_path} already exists. Merge fetched data into it? [y/N]: ")
     return answer.strip().lower() in ("y", "yes")
 
 
@@ -168,7 +168,7 @@ def main(argv=None):
         _reject_bucket_mismatch(args.output, args.bucket)
         _reject_units_mismatch(args.output, args.units)
 
-        if not _confirm_output_overwrite(args.output):
+        if not _confirm_output_merge(args.output):
             print(f"Kept existing {args.output}; nothing written.")
             return 0
 

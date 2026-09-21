@@ -77,12 +77,12 @@ Request flow through the modules in `src/flume_cli/`:
    between existing rows) and raises `FlumeCliError` on a confident mismatch, and
    `_reject_units_mismatch`, which does the same for `--units` by reading the existing file's
    `units` column directly (no inference needed there — it's a real column); it then triggers a
-   `y`/`N` overwrite confirmation (`_confirm_output_overwrite`). All three checks run before
+   `y`/`N` merge confirmation (`_confirm_output_merge`). All three checks run before
    `FlumeClient`/auth/device-fetch, since a rejection or a decline should cost no API requests
-   toward Flume's rate limit. A confirmed overwrite of an existing file no longer truncates it —
-   `report.merge_rows` merges the freshly fetched rows into the existing ones (new row wins on a
-   `(device_id, datetime)` collision, each device's rows re-sorted ascending afterward), so a new
-   reading lands in its correct chronological position instead of being appended to the end.
+   toward Flume's rate limit. Confirming does not truncate the existing file — `report.merge_rows`
+   merges the freshly fetched rows into the existing ones (new row wins on a `(device_id, datetime)`
+   collision, each device's rows re-sorted ascending afterward), so a new reading lands in its
+   correct chronological position instead of being appended to the end.
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.

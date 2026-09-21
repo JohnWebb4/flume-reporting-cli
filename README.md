@@ -64,7 +64,7 @@ Both write usage at 1-minute granularity (in gallons) for every water sensor on 
 If `--output` already points at a file that exists, `flume-report` first checks that file's bucket
 (inferred from the gap between existing rows) and its `units` column against the requested `--bucket`
 and `--units`, and errors out (exit 1, no API calls) if either doesn't match. If both match (or the
-existing bucket can't be determined), it then asks for confirmation before overwriting (`y`/`N`,
+existing bucket can't be determined), it then asks for confirmation before merging (`y`/`N`,
 defaulting to no). Answering no exits cleanly (code 0) without writing or making any API calls.
 Answering yes **merges** the freshly fetched rows into the existing file rather than replacing it —
 a new reading is inserted in its correct chronological position (and overwrites any existing reading
@@ -169,9 +169,9 @@ then refreshes it automatically. Delete this file to force a fresh login.
   through to the normal prompt.
 - **Units mismatch on merge**: unlike bucket, `units` is a real column in the CSV, so this
   check is exact rather than inferred — if the existing file's `units` differ from the requested
-  `--units`, the CLI errors out (exit 1) before the overwrite prompt rather than mixing unit
+  `--units`, the CLI errors out (exit 1) before the merge prompt rather than mixing unit
   systems in one file.
-- **Merging on confirmed merge**: answering `y` to the overwrite prompt merges the freshly
+- **Merging on confirmation**: answering `y` to the merge prompt merges the freshly
   fetched rows into the existing file instead of replacing it. Rows are grouped by device and
   sorted ascending by datetime; a fetched row overwrites an existing row sharing the same device
   and datetime, and devices present in the existing file but not covered by this run are left
