@@ -6,7 +6,6 @@ from flume_cli import auth, report
 from flume_cli.client import FlumeClient
 from flume_cli.config import (
     DEFAULT_BUCKET,
-    DEFAULT_DAYS,
     DEFAULT_DEVICE_TYPE,
     DEFAULT_OUTPUT,
     DEFAULT_UNITS,
@@ -49,11 +48,22 @@ def build_parser():
 
     day_parser = subparsers.add_parser(
         "day", parents=[common],
-        help="Fetch a rolling window of the last N days of usage.",
+        help="Fetch usage for yesterday, or a specific past day with --day/--month/--year.",
     )
     day_parser.add_argument(
-        "--days", type=int, default=DEFAULT_DAYS,
-        help=f"Number of trailing days of usage to fetch (default: {DEFAULT_DAYS})",
+        "--day", type=int, default=None, metavar="1-31",
+        help="Day of month to fetch (1-31). Must be used together with --month and --year. "
+             "Defaults to yesterday.",
+    )
+    day_parser.add_argument(
+        "--month", type=int, default=None, choices=range(1, 13), metavar="1-12",
+        help="Month to fetch (1-12). Must be used together with --day and --year. "
+             "Defaults to yesterday.",
+    )
+    day_parser.add_argument(
+        "--year", type=int, default=None, metavar="YYYY",
+        help="Year to fetch, e.g. 2025. Must be used together with --day and --month. "
+             "Defaults to yesterday.",
     )
 
     month_parser = subparsers.add_parser(
@@ -83,6 +93,15 @@ def _reject_current_or_future_month(year, month, now=None):
         )
 
 
+def _reject_today_or_future_day(year, month, day, now=None):
+    now = now or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, matches report.py
+    if (year, month, day) >= (now.year, now.month, now.day):
+        raise ConfigError(
+            f"Cannot fetch usage for {year:04d}-{month:02d}-{day:02d}: that day hasn't "
+            "finished yet or hasn't happened yet. Pass a day before today."
+        )
+
+
 def main(argv=None):
     load_dotenv_if_present()
     parser = build_parser()
@@ -91,6 +110,11 @@ def main(argv=None):
     if args.command == "month" and (args.month is None) != (args.year is None):
         parser.error("--month and --year must be provided together")
 
+    if args.command == "day":
+        day_flags_given = [args.day is not None, args.month is not None, args.year is not None]
+        if any(day_flags_given) and not all(day_flags_given):
+            parser.error("--day, --month, and --year must be provided together")
+
     try:
         creds = Credentials.from_env()
     except ConfigError as exc:
@@ -98,7 +122,9 @@ def main(argv=None):
         return 2
 
     try:
-        if args.command == "month" and args.month is not None:
+        if args.command == "day" and args.day is not None:
+            _reject_today_or_future_day(args.year, args.month, args.day)
+        elif args.command == "month" and args.month is not None:
             _reject_current_or_future_month(args.year, args.month)
 
         client = FlumeClient()
@@ -109,7 +135,10 @@ def main(argv=None):
         device_ids = report.select_device_ids(devices, args.device_ids)
 
         if args.command == "day":
-            windows = report.daily_windows(args.days)
+            if args.day is not None:
+                windows = report.day_windows(year=args.year, month=args.month, day=args.day)
+            else:
+                windows = report.day_windows()
         elif args.month is not None:
             windows = report.month_windows(year=args.year, month=args.month)
         else:

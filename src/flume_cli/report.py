@@ -7,19 +7,28 @@ DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 CSV_FIELDNAMES = ["device_id", "datetime", "value", "units"]
 
 
-def daily_windows(days, end=None):
-    """Rolling 24h windows covering the last `days` days, oldest first.
+def day_windows(reference=None, *, year=None, month=None, day=None):
+    """Single-day window, returned as a one-item list for build_report_rows' windows=.
+
+    With no arguments, covers yesterday relative to `reference` (or now, if
+    `reference` is omitted) -- e.g. run on Sep 20, this covers
+    Sep 19 00:00:00 -> Sep 20 00:00:00.
+
+    With `year`/`month`/`day` given (all required together -- see cli.py for
+    that validation), covers that exact calendar day instead.
 
     Flume's since/until_datetime examples carry no timezone info, so these are
     naive local timestamps (assumed to match the account's local timezone).
     """
-    end = end or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
-    windows = []
-    for day_offset in range(days, 0, -1):
-        since = end - timedelta(days=day_offset)
-        until = end - timedelta(days=day_offset - 1)
-        windows.append((since.strftime(DATETIME_FORMAT), until.strftime(DATETIME_FORMAT)))
-    return windows
+    if year is not None and month is not None and day is not None:
+        start_of_day = datetime(year, month, day)  # noqa: DTZ001 -- naive local time is intentional, see docstring
+    else:
+        reference = reference or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, see docstring
+        start_of_today = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_of_day = start_of_today - timedelta(days=1)
+
+    end_of_day = start_of_day + timedelta(days=1)
+    return [(start_of_day.strftime(DATETIME_FORMAT), end_of_day.strftime(DATETIME_FORMAT))]
 
 def month_windows(reference=None, *, year=None, month=None):
     """Daily windows covering a calendar month, oldest first.
@@ -32,7 +41,7 @@ def month_windows(reference=None, *, year=None, month=None):
     validation), covers that exact calendar month instead.
 
     Either way, the month is chunked into one request per day (see
-    daily_windows for why: no documented per-request row/range limit on the
+    day_windows for why: no documented per-request row/range limit on the
     query endpoint).
     """
     if year is not None and month is not None:

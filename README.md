@@ -1,8 +1,9 @@
 # flume-reporting-cli
 
 CLI wrapper for the [Flume](https://flumewater.com) Water API that fetches a water sensor's
-usage for a given day range or a calendar month (the last full month by default, or any past
-month you specify) and writes it to a CSV file.
+usage for a specific day (yesterday by default, or any past day you specify) or a calendar
+month (the last full month by default, or any past month you specify) and writes it to a CSV
+file.
 
 ## Prerequisites
 
@@ -52,7 +53,8 @@ FLUME_PASSWORD=...
 
 The CLI requires one of two subcommands:
 
-- `flume-report day` — a rolling window of the last N days of usage, ending now.
+- `flume-report day` — yesterday's usage (midnight-to-midnight), or a specific past day via
+  `--day`/`--month`/`--year`.
 - `flume-report month` — the last full calendar month of usage, or a specific past month via
   `--month`/`--year`.
 
@@ -68,11 +70,13 @@ Shared flags (available on both `day` and `month`):
 | `--device-id ID` | all sensors | Limit the report to one device (repeatable) |
 | `--units UNIT` | `GALLONS` | `GALLONS`, `LITERS`, `CUBIC_FEET`, or `CUBIC_METERS` |
 
-`day`-only flag:
+`day`-only flags (must be used together):
 
 | Flag | Default | Description |
 |---|---|---|
-| `--days N` | `7` | Number of trailing days of usage to fetch |
+| `--day N` | yesterday | Day of month to fetch (1-31) |
+| `--month N` | yesterday | Month to fetch (1-12) |
+| `--year YYYY` | yesterday | Year to fetch, e.g. `2025` |
 
 `month`-only flags (must be used together):
 
@@ -81,10 +85,16 @@ Shared flags (available on both `day` and `month`):
 | `--month N` | last full month | Month to fetch (1-12) |
 | `--year YYYY` | last full month | Year to fetch, e.g. `2025` |
 
-Example: last 3 days of hourly usage for a specific device, in liters:
+Example: yesterday's hourly usage for a specific device, in liters:
 
 ```bash
-flume-report day --days 3 --bucket HR --device-id 6721255604737738501 --units LITERS --output usage.csv
+flume-report day --bucket HR --device-id 6721255604737738501 --units LITERS --output usage.csv
+```
+
+Example: a specific past day (March 15, 2025) for every sensor:
+
+```bash
+flume-report day --day 15 --month 3 --year 2025
 ```
 
 Example: last full calendar month for every sensor, at the default `MIN` bucket:
@@ -125,20 +135,24 @@ then refreshes it automatically. Delete this file to force a fresh login.
   reference docs in `docs/`, so verify against a live response if usage looks wrong.
 - **Paging strategy**: the usage query endpoint doesn't document a `limit`/`offset` style of
   pagination, so this CLI pages by issuing one query per calendar day instead (`month` →
-  ~28-31 requests per device; `day --days N` → N requests per device) to stay well under any
-  undocumented per-request range limits. At the default `MIN` bucket this means up to 1440 rows
-  per request (vs. 24/day previously at `HR`) — day-sized chunking was chosen defensively for
-  `HR` and hasn't been independently verified as safe at `MIN` against an undocumented
-  row/range limit, so watch for errors or truncated results on large accounts. This applies the
-  same way whether `month` fetches the default last-full-month or an explicit `--month`/`--year`.
+  ~28-31 requests per device; `day` → 1 request per device, since it's always a single calendar
+  day) to stay well under any undocumented per-request range limits. At the default `MIN`
+  bucket this means up to 1440 rows per request (vs. 24/day previously at `HR`) — day-sized
+  chunking was chosen defensively for `HR` and hasn't been independently verified as safe at
+  `MIN` against an undocumented row/range limit, so watch for errors or truncated results on
+  large accounts. This applies the same way whether `month` fetches the default last-full-month
+  or an explicit `--month`/`--year`.
 - **Month range**: `flume-report month --month N --year Y` only accepts a month strictly before
   the current one — it's rejected up front with a clear error rather than silently returning an
   empty or partial report, since "month" is meant to always be a *full* calendar month.
+- **Day range**: `flume-report day --day D --month M --year Y` only accepts a day strictly
+  before today — it's rejected up front with a clear error rather than silently returning an
+  empty or partial report.
 - **Rate limiting**: Flume enforces a 120 requests/hour limit per account. With `month`'s
   default `MIN`-bucket paging above, an account with several devices can hit this in a single
   run. Hitting it produces a clear `error: Flume API rate limit reached (429): ...` message and
   the CLI exits (code 1) without retrying — wait for the limit to reset (up to an hour) and
-  re-run, or narrow the request with `day --days N`/`--device-id` to use fewer requests.
+  re-run, or narrow the request with `--device-id` to use fewer requests.
 - **Network errors**: requests time out after 30s, and connection failures (DNS, refused
   connections, timeouts) are caught and reported as a clean `error: ...` message rather than a
   raw Python traceback.
