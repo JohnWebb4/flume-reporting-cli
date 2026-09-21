@@ -124,6 +124,18 @@ then refreshes it automatically. Delete this file to force a fresh login.
   connections, timeouts) are caught and reported as a clean `error: ...` message rather than a
   raw Python traceback.
 
+## Development
+
+Dev dependencies ([ruff](https://docs.astral.sh/ruff/) for linting, [pytest](https://pytest.org)
+for tests) are managed with [`uv`](https://docs.astral.sh/uv/) via a `dev` dependency group in
+`pyproject.toml`:
+
+```bash
+uv sync                    # installs runtime + dev dependencies into .venv
+uv run ruff check .        # lint
+uv run pytest              # run tests
+```
+
 ## Troubleshooting
 
 - `invalid_client`: your `FLUME_CLIENT_ID`/`FLUME_CLIENT_SECRET` are wrong.
