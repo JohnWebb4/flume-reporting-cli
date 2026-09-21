@@ -40,7 +40,9 @@ class Credentials:
         missing = [name for name, value in values.items() if not value]
         if missing:
             raise ConfigError(
-                "Missing required environment variable(s): " + ", ".join(missing)
+                "Missing required environment variable(s): " + ", ".join(missing) +
+                ". Set them in your shell, or in a .env file in the current directory "
+                "(see .env.example)."
             )
         return cls(
             client_id=values["FLUME_CLIENT_ID"],
