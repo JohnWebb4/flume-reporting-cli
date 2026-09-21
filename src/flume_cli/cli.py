@@ -116,6 +116,22 @@ def _reject_bucket_mismatch(output_path, requested_bucket):
         )
 
 
+def _reject_units_mismatch(output_path, requested_units):
+    if not os.path.exists(output_path):
+        return
+    existing_rows = report.read_csv_rows(output_path)
+    if not existing_rows:
+        return
+    existing_units = existing_rows[0].get("units")
+    if existing_units and existing_units != requested_units:
+        raise FlumeCliError(
+            f"{output_path} appears to have been written with units {existing_units}, "
+            f"but this run requested units {requested_units}. Refusing to overwrite a "
+            f"report using different units; use --units {existing_units} or a different "
+            "--output."
+        )
+
+
 def _confirm_output_overwrite(output_path, *, prompt=None):
     if not os.path.exists(output_path):
         return True
@@ -150,6 +166,7 @@ def main(argv=None):
             _reject_current_or_future_month(args.year, args.month)
 
         _reject_bucket_mismatch(args.output, args.bucket)
+        _reject_units_mismatch(args.output, args.units)
 
         if not _confirm_output_overwrite(args.output):
             print(f"Kept existing {args.output}; nothing written.")
@@ -176,6 +193,8 @@ def main(argv=None):
             client, token.user_id, device_ids,
             windows=windows, bucket=args.bucket, units=args.units,
         )
+        if os.path.exists(args.output):
+            rows = report.merge_rows(report.read_csv_rows(args.output), rows)
         count = report.write_csv(rows, args.output)
     except FlumeCliError as exc:
         print(f"error: {exc}", file=sys.stderr)

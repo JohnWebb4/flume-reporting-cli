@@ -57,6 +57,10 @@ Request flow through the modules in `src/flume_cli/`:
    **per calendar day** (`day_windows`/`month_windows`), not one request for the whole range — the
    Flume query endpoint has no documented row/range limit, so day-sized chunks are a defensive choice.
    `report.py` itself has no notion of "day mode" vs. "month mode" — that decision lives in `cli.py`.
+   `read_csv_rows()` is the one shared "open + parse an existing report CSV" path (used by
+   `infer_bucket_from_csv`, `cli.py`'s `_reject_units_mismatch`, and `merge_rows`); `merge_rows()`
+   combines an existing file's rows with newly fetched ones, grouped by device and re-sorted
+   ascending by datetime, with a new row overwriting an existing one on a matching datetime.
 5. **`cli.py`** — argparse wiring with `day` and `month` subcommands (sharing `--output`, `--bucket`,
    `--device-id`, `--units` via a `parents=` parser; `day_parser` owns `--day`/`--month`/`--year`
    which must all be given together, defaulting to yesterday; `month_parser` separately owns its own
@@ -70,10 +74,15 @@ Request flow through the modules in `src/flume_cli/`:
    check. An existing `--output` file first goes through `_reject_bucket_mismatch`, which compares
    the requested `--bucket` against `report.infer_bucket_from_csv`'s best-effort guess at the
    existing file's bucket (there's no bucket column in the CSV, so this is inferred from the gap
-   between existing rows) and raises `FlumeCliError` on a confident mismatch; it then triggers a
-   `y`/`N` overwrite confirmation (`_confirm_output_overwrite`). Both checks run before
+   between existing rows) and raises `FlumeCliError` on a confident mismatch, and
+   `_reject_units_mismatch`, which does the same for `--units` by reading the existing file's
+   `units` column directly (no inference needed there — it's a real column); it then triggers a
+   `y`/`N` overwrite confirmation (`_confirm_output_overwrite`). All three checks run before
    `FlumeClient`/auth/device-fetch, since a rejection or a decline should cost no API requests
-   toward Flume's rate limit.
+   toward Flume's rate limit. A confirmed overwrite of an existing file no longer truncates it —
+   `report.merge_rows` merges the freshly fetched rows into the existing ones (new row wins on a
+   `(device_id, datetime)` collision, each device's rows re-sorted ascending afterward), so a new
+   reading lands in its correct chronological position instead of being appended to the end.
 
 `errors.py` defines the exception hierarchy every other module raises into and `cli.py` catches:
 `FlumeCliError` → `ConfigError`, `FlumeApiError` (→ `AuthError`, `RateLimitError`), `NetworkError`.

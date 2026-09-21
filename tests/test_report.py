@@ -384,3 +384,116 @@ class TestInferBucketFromCsv:
         ])
 
         assert report.infer_bucket_from_csv(output) == "HR"
+
+
+class TestReadCsvRows:
+    def test_returns_empty_list_for_missing_file(self, tmp_path):
+        assert report.read_csv_rows(tmp_path / "missing.csv") == []
+
+    def test_returns_empty_list_for_header_only_file(self, tmp_path):
+        output = tmp_path / "report.csv"
+        report.write_csv([], output)
+
+        assert report.read_csv_rows(output) == []
+
+    def test_returns_rows_as_dicts(self, tmp_path):
+        output = tmp_path / "report.csv"
+        report.write_csv(
+            [{"device_id": "dev-1", "datetime": "2026-09-01 00:00:00", "value": 1.0, "units": "GALLONS"}],
+            output,
+        )
+
+        rows = report.read_csv_rows(output)
+
+        assert rows == [
+            {"device_id": "dev-1", "datetime": "2026-09-01 00:00:00", "value": "1.0", "units": "GALLONS"}
+        ]
+
+
+class TestMergeRows:
+    def _row(self, device_id, dt, value=1.0, units="GALLONS"):
+        return {"device_id": device_id, "datetime": dt, "value": value, "units": units}
+
+    def test_returns_new_rows_unchanged_when_existing_is_empty(self):
+        new_rows = [self._row("dev-1", "2026-09-01 00:00:00")]
+
+        assert report.merge_rows([], new_rows) == new_rows
+
+    def test_new_row_overwrites_existing_row_with_same_device_and_datetime(self):
+        existing = [self._row("dev-1", "2026-09-01 00:00:00", value=1.0)]
+        new = [self._row("dev-1", "2026-09-01 00:00:00", value=99.0)]
+
+        merged = report.merge_rows(existing, new)
+
+        assert merged == [self._row("dev-1", "2026-09-01 00:00:00", value=99.0)]
+
+    def test_new_row_is_inserted_in_sorted_position_not_appended_to_end(self):
+        existing = [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-1", "2026-09-01 03:00:00"),
+        ]
+        new = [
+            self._row("dev-1", "2026-09-01 01:00:00"),
+            self._row("dev-1", "2026-09-01 02:00:00"),
+        ]
+
+        merged = report.merge_rows(existing, new)
+
+        assert [row["datetime"] for row in merged] == [
+            "2026-09-01 00:00:00",
+            "2026-09-01 01:00:00",
+            "2026-09-01 02:00:00",
+            "2026-09-01 03:00:00",
+        ]
+
+    def test_existing_only_device_is_preserved_untouched_when_absent_from_new_rows(self):
+        existing = [
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-2", "2026-09-01 00:00:00"),
+        ]
+        new = [self._row("dev-1", "2026-09-01 01:00:00")]
+
+        merged = report.merge_rows(existing, new)
+
+        assert self._row("dev-2", "2026-09-01 00:00:00") in merged
+
+    def test_brand_new_device_is_appended_after_existing_devices_in_first_seen_order(self):
+        existing = [self._row("dev-1", "2026-09-01 00:00:00")]
+        new = [self._row("dev-2", "2026-09-01 00:00:00")]
+
+        merged = report.merge_rows(existing, new)
+
+        assert [row["device_id"] for row in merged] == ["dev-1", "dev-2"]
+
+    def test_each_device_group_sorted_independently_regardless_of_input_order(self):
+        existing = [
+            self._row("dev-1", "2026-09-01 02:00:00"),
+            self._row("dev-2", "2026-09-01 02:00:00"),
+            self._row("dev-1", "2026-09-01 00:00:00"),
+            self._row("dev-2", "2026-09-01 00:00:00"),
+        ]
+
+        merged = report.merge_rows(existing, [])
+
+        dev1_times = [row["datetime"] for row in merged if row["device_id"] == "dev-1"]
+        dev2_times = [row["datetime"] for row in merged if row["device_id"] == "dev-2"]
+        assert dev1_times == ["2026-09-01 00:00:00", "2026-09-01 02:00:00"]
+        assert dev2_times == ["2026-09-01 00:00:00", "2026-09-01 02:00:00"]
+
+    def test_accepts_new_rows_as_a_generator(self):
+        existing = [self._row("dev-1", "2026-09-01 00:00:00")]
+
+        def new_rows():
+            yield self._row("dev-1", "2026-09-01 01:00:00")
+
+        merged = report.merge_rows(existing, new_rows())
+
+        assert [row["datetime"] for row in merged] == [
+            "2026-09-01 00:00:00", "2026-09-01 01:00:00",
+        ]
+
+    def test_raises_flume_cli_error_for_unparsable_existing_datetime(self):
+        existing = [self._row("dev-1", "not-a-datetime")]
+
+        with pytest.raises(FlumeCliError, match="doesn't match the expected format"):
+            report.merge_rows(existing, [])

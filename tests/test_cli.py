@@ -1,3 +1,4 @@
+import csv
 from datetime import datetime
 
 import pytest
@@ -185,6 +186,36 @@ class TestRejectBucketMismatch:
             cli._reject_bucket_mismatch(existing, "MIN")
 
 
+class TestRejectUnitsMismatch:
+    def test_no_op_when_file_does_not_exist(self, tmp_path):
+        cli._reject_units_mismatch(tmp_path / "missing.csv", "GALLONS")
+
+    def test_no_op_when_file_is_header_only(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text("device_id,datetime,value,units\n")
+
+        cli._reject_units_mismatch(existing, "GALLONS")
+
+    def test_no_op_when_units_match(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+        )
+
+        cli._reject_units_mismatch(existing, "GALLONS")
+
+    def test_raises_when_units_differ(self, tmp_path):
+        existing = tmp_path / "report.csv"
+        existing.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+        )
+
+        with pytest.raises(FlumeCliError, match="GALLONS"):
+            cli._reject_units_mismatch(existing, "LITERS")
+
+
 class TestConfirmOutputOverwrite:
     def test_returns_true_when_file_does_not_exist(self, tmp_path):
         def fail_if_called(_msg):
@@ -279,3 +310,80 @@ class TestMainRejectsBucketMismatchBeforePrompting:
 
         assert exit_code == 1
         assert "error:" in capsys.readouterr().err
+
+
+class TestMainRejectsUnitsMismatchBeforePrompting:
+    def test_mismatch_exits_1_without_prompting_or_any_api_calls(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        output = tmp_path / "existing.csv"
+        output.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 01:00:00,1.0,GALLONS\n"
+        )
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("should not be called on units mismatch")
+
+        monkeypatch.setattr(cli, "FlumeClient", fail_if_called)
+        monkeypatch.setattr("builtins.input", fail_if_called)
+        monkeypatch.setenv("FLUME_CLIENT_ID", "id")
+        monkeypatch.setenv("FLUME_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("FLUME_USERNAME", "user@example.com")
+        monkeypatch.setenv("FLUME_PASSWORD", "pw")
+
+        exit_code = cli.main(
+            ["day", "--output", str(output), "--bucket", "HR", "--units", "LITERS"]
+        )
+
+        assert exit_code == 1
+        assert "error:" in capsys.readouterr().err
+
+
+class TestMainMergesOnConfirmedOverwrite:
+    def test_new_rows_are_merged_into_existing_rows_preserving_sort_order(
+        self, tmp_path, monkeypatch
+    ):
+        output = tmp_path / "existing.csv"
+        output.write_text(
+            "device_id,datetime,value,units\n"
+            "dev-1,2026-09-01 00:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 01:00:00,1.0,GALLONS\n"
+            "dev-1,2026-09-01 03:00:00,1.0,GALLONS\n"
+        )
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def set_token(self, token):
+                pass
+
+            def fetch_devices(self, user_id, type_=None):
+                return [{"id": "dev-1"}]
+
+            def query_device(self, user_id, device_id, *, since, until, bucket, units):
+                return [{"datetime": "2026-09-01 02:00:00", "value": 9.0}]
+
+        class FakeToken:
+            access_token = "tok"
+            user_id = "user-1"
+
+        monkeypatch.setattr(cli, "FlumeClient", FakeClient)
+        monkeypatch.setattr(cli.auth, "get_valid_token", lambda client, creds: FakeToken())
+        monkeypatch.setenv("FLUME_CLIENT_ID", "id")
+        monkeypatch.setenv("FLUME_CLIENT_SECRET", "secret")
+        monkeypatch.setenv("FLUME_USERNAME", "user@example.com")
+        monkeypatch.setenv("FLUME_PASSWORD", "pw")
+        monkeypatch.setattr("builtins.input", lambda _msg: "y")
+
+        exit_code = cli.main(["day", "--output", str(output), "--bucket", "HR"])
+
+        assert exit_code == 0
+        with open(output, newline="") as f:
+            written = list(csv.DictReader(f))
+        assert [row["datetime"] for row in written] == [
+            "2026-09-01 00:00:00", "2026-09-01 01:00:00",
+            "2026-09-01 02:00:00", "2026-09-01 03:00:00",
+        ]
