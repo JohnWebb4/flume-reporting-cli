@@ -124,6 +124,44 @@ class TestMonthWindows:
         assert windows[0][0] == "2026-08-01 00:00:00"
         assert windows[-1][1] == "2026-09-01 00:00:00"
 
+    def test_explicit_year_month_mid_year(self):
+        windows = report.month_windows(year=2025, month=3)
+
+        assert windows[0][0] == "2025-03-01 00:00:00"
+        assert windows[-1][1] == "2025-04-01 00:00:00"
+        assert len(windows) == 31
+
+    def test_explicit_year_month_december_wraps_to_next_january(self):
+        windows = report.month_windows(year=2025, month=12)
+
+        assert windows[0][0] == "2025-12-01 00:00:00"
+        assert windows[-1][1] == "2026-01-01 00:00:00"
+        assert len(windows) == 31
+
+    def test_explicit_year_month_leap_year_february(self):
+        windows = report.month_windows(year=2024, month=2)
+
+        assert len(windows) == 29
+
+    def test_explicit_year_month_non_leap_year_february(self):
+        windows = report.month_windows(year=2025, month=2)
+
+        assert len(windows) == 28
+
+    def test_explicit_year_month_windows_are_contiguous(self):
+        windows = report.month_windows(year=2025, month=3)
+
+        for (_, until), (next_since, _) in zip(windows, windows[1:]):
+            assert until == next_since
+
+    def test_explicit_year_month_takes_precedence_over_reference(self):
+        reference = _dt(2020, 1, 1)
+
+        windows = report.month_windows(reference, year=2025, month=3)
+
+        assert windows[0][0] == "2025-03-01 00:00:00"
+        assert windows[-1][1] == "2025-04-01 00:00:00"
+
 
 class TestSelectDeviceIds:
     DEVICES: ClassVar = [{"id": "a"}, {"id": "b"}, {"id": "c"}]

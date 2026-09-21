@@ -1,5 +1,6 @@
 import argparse
 import sys
+from datetime import datetime
 
 from flume_cli import auth, report
 from flume_cli.client import FlumeClient
@@ -55,17 +56,40 @@ def build_parser():
         help=f"Number of trailing days of usage to fetch (default: {DEFAULT_DAYS})",
     )
 
-    subparsers.add_parser(
+    month_parser = subparsers.add_parser(
         "month", parents=[common],
-        help="Fetch usage for the last full calendar month.",
+        help="Fetch usage for the last full calendar month, or a specific month with --month/--year.",
+    )
+    month_parser.add_argument(
+        "--month", type=int, default=None, choices=range(1, 13), metavar="1-12",
+        help="Month to fetch (1-12). Must be used together with --year. "
+             "Defaults to the last full calendar month.",
+    )
+    month_parser.add_argument(
+        "--year", type=int, default=None, metavar="YYYY",
+        help="Year to fetch, e.g. 2025. Must be used together with --month. "
+             "Defaults to the last full calendar month.",
     )
 
     return parser
 
 
+def _reject_current_or_future_month(year, month, now=None):
+    now = now or datetime.now()  # noqa: DTZ005 -- naive local time is intentional, matches report.py
+    if (year, month) >= (now.year, now.month):
+        raise ConfigError(
+            f"Cannot fetch usage for {year:04d}-{month:02d}: that month is still in "
+            "progress or hasn't started yet. Pass a month before the current one."
+        )
+
+
 def main(argv=None):
     load_dotenv_if_present()
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "month" and (args.month is None) != (args.year is None):
+        parser.error("--month and --year must be provided together")
 
     try:
         creds = Credentials.from_env()
@@ -74,6 +98,9 @@ def main(argv=None):
         return 2
 
     try:
+        if args.command == "month" and args.month is not None:
+            _reject_current_or_future_month(args.year, args.month)
+
         client = FlumeClient()
         token = auth.get_valid_token(client, creds)
         client.set_token(token.access_token)
@@ -83,6 +110,8 @@ def main(argv=None):
 
         if args.command == "day":
             windows = report.daily_windows(args.days)
+        elif args.month is not None:
+            windows = report.month_windows(year=args.year, month=args.month)
         else:
             windows = report.month_windows()
 
