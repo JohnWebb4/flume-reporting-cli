@@ -15,8 +15,17 @@ flume-report day --days 3 --bucket HR --device-id <id> --units LITERS --output u
 flume-report month         # last full calendar month (also: python -m flume_cli month)
 ```
 
-There is no test suite, linter, or CI config in this repo currently — don't assume `pytest`/`ruff`/etc.
-are available unless you add them.
+Dev tooling (`ruff`, `pytest`) is managed via `uv` and declared in the `dev` dependency group in
+`pyproject.toml`:
+
+```bash
+uv sync                    # installs runtime + dev deps (ruff, pytest) into .venv
+uv run ruff check .        # lint
+uv run pytest              # run tests
+```
+
+Both run with their defaults — there's no `[tool.ruff]` or `[tool.pytest.ini_options]` config in
+`pyproject.toml` yet, no test files exist in the repo currently, and neither is wired into CI.
 
 Credentials come from `FLUME_CLIENT_ID` / `FLUME_CLIENT_SECRET` / `FLUME_USERNAME` / `FLUME_PASSWORD`,
 read from the environment or a `.env` file (see `.env.example`). Reference material for the underlying
